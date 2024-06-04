@@ -2,6 +2,9 @@ import numpy as np
 import imutils
 import matplotlib.pyplot as plt
 import cv2
+from collections import namedtuple
+Rectangle = namedtuple('Rectangle', 'x1 y1 x2 y2')
+
 
 def changeFormat(image):
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -101,6 +104,7 @@ def filter_contours_by_centroids(contours):
     filtered_contours = []
     centroids = []
 
+    
     # Extract centroids and calculate bounding boxes
     for contour in contours:
         moments = cv2.moments(contour)
@@ -125,8 +129,7 @@ def filter_contours_by_centroids(contours):
                 if distance <= radius:
                     is_valid = True
                     break
-
-        if is_valid:
+        
             filtered_contours.append(contour)
 
     return filtered_contours
@@ -138,7 +141,8 @@ def filter_blob_contours(contours):
         # Calculate the area and perimeter of the contour
         area = cv2.contourArea(contour)
         perimeter = cv2.arcLength(contour, True)
-
+        if perimeter ==0: 
+            continue
         # Calculate the compactness (circularity) of the contour
         compactness = 4 * np.pi * area / (perimeter ** 2)
 
@@ -148,12 +152,36 @@ def filter_blob_contours(contours):
 
     return filtered_contours
 
+def filter_contours_not_inside_sensor(contours, sensor_rect):
+    def pointInRect(point,rect):
+        x1, y1, w, h = rect
+        x2, y2 = x1+w, y1+h
+        x, y = point
+        if (x1 < x and x < x2):
+            if (y1 < y and y < y2):
+                return True
+        return False
+    
+    filtered_contours = []
+    for contour in contours:
+        moments = cv2.moments(contour)
+        centroid_x = int(moments['m10'] / moments['m00'])
+        centroid_y = int(moments['m01'] / moments['m00'])
+        if (pointInRect((centroid_x, centroid_y), sensor_rect)):
+            filtered_contours.append(contour)
 
-def extract_yellowcircles(image, padding_ratio = 0.9):
+    return filtered_contours
+            
+
+def extract_yellowcircles(image, padding_ratio = 0.9, first_extract = False):
+    if (first_extract):
+        x,y,w,h = extracting_sensor_region(image)
+        image = image[y:y+h, x:x+w]
+        square_region = image
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    lower_yellow = np.array([15, 100, 100])
-    upper_yellow = np.array([45, 255, 255])
+    lower_yellow = np.array([20, 150, 150])
+    upper_yellow = np.array([30, 255, 255])
 
     mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
 
@@ -176,18 +204,38 @@ def extract_yellowcircles(image, padding_ratio = 0.9):
     threshold = 100
     _, binary = cv2.threshold(dog, threshold, 255, cv2.THRESH_BINARY)
     # _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
-    # plt.figure()
-    # plt.imshow(yellow_circles)
-
 
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # cv2.drawContours(yellow_circles, contours, 2, 255, 10)
+    # cv2.drawContours(yellow_circles, contours, -1, 255, 10)
+    # print(len(contours))
+    # plt.figure()
+    # plt.imshow(yellow_circles)
+    # plt.title('Contours')
+    # plt.show()
     if(len(contours)>4):
-        contours = filter_blob_contours(contours)
-        contours = filter_contours_by_centroids(contours)
-        if(len(contours)!=4):
-            contours = find_rectangle_contours(contours)
+        cv2.drawContours(yellow_circles, contours, 2, 255, 10)
+        # if (first_extract): 
+        #     sensor_rect = extracting_sensor_region(image)
+        #     contours = filter_contours_not_inside_sensor(contours, sensor_rect)
+        # contours = filter_blob_contours(contours)
+        # contours = filter_contours_by_centroids(contours)
 
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        # Get the top four contours
+        contours = sorted_contours[:4]
+
+        # Print the areas of the top four contours
+        # print('Contour areas of top four contours:')
+        # for cnt in contours:
+        #     print(cv2.contourArea(cnt))
+        # print('Contour areas:')
+        
+        # if(len(contours)!=4):
+        #     contours = find_rectangle_contours(contours)
+    if(len(contours)<4):
+        print('Not enought contours detected:', len(contours))
+        return yellow_circles, image, 0, image, 0, []
 
     # filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 100]
 
@@ -199,13 +247,20 @@ def extract_yellowcircles(image, padding_ratio = 0.9):
     x_min, y_min, x_max, y_max = float('inf'), float('inf'), 0, 0
     max_width = -1
     areas = []
+    # plt.figure(figsize=(10, 8))
+    # plt.imshow(changeFormat(yellow_circles))
+    # plt.title('Black')
+    # plt.show()
+
     # TODO: Add validation check to eliminate noisy contours using geometry of the sensor
     for contour in contours:
         area = cv2.contourArea(contour)
         if area > threshold_area:
+            # print(area)
             mask = np.zeros_like(hsv[:,:,0], dtype=np.uint8)
             cv2.drawContours(mask, [contour], 0, 255, -1)
             mean_color = cv2.mean(hsv, mask=mask)[:3]  # HSV format
+
             if (lower_yellow <= mean_color).all() and (mean_color <= upper_yellow).all():
                 areas.append(area)
                 x, y, w, h = cv2.boundingRect(contour)
@@ -218,10 +273,16 @@ def extract_yellowcircles(image, padding_ratio = 0.9):
                 centroid_x = int(M['m10'] / M['m00'])
                 centroid_y = int(M['m01'] / M['m00'])
                 yellow_objects.append((centroid_x, centroid_y, [contour]))
-    if(len(yellow_objects)==0):
+
+    if(len(yellow_objects) == 0):
+        print('No 4 yellow circles detected')
         return yellow_circles, image, max_width/2, image, 0, []
-    # for (x, y) in yellow_objects:
-    #     cv2.circle(image, (x, y), 2, (0, 255, 255), -1)
+
+    # print(len(yellow_objects))
+    for (x, y,_) in yellow_objects:
+        cv2.circle(image, (x, y), 2, (0, 255, 255), -1)
+    
+    
     # print((x_max - x_min) * padding_ratio)
     padding = int((x_max - x_min) * padding_ratio)
     x_min = max(x_min - padding, 0)
@@ -230,4 +291,69 @@ def extract_yellowcircles(image, padding_ratio = 0.9):
     y_max = min(y_max + padding, image.shape[0])
 
     square_region = image[y_min:y_max, x_min:x_max]
+    # plt.figure()
+    # plt.imshow(square_region)
+    # plt.show()
     return yellow_circles, square_region, max_width/2, image, np.max(areas), yellow_objects
+
+def extracting_sensor_region(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    blur = cv2.GaussianBlur(gray, (13,13), 0)
+
+    # Apply thresholding
+    ret, thresh1 = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+    cnts = cv2.findContours(thresh1, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+
+    height, width = image.shape[:2]
+
+    def is_contour_touching_edge(contour, width, height):
+        for point in contour:
+            if point[0][0] <= 0 or point[0][1] <= 0 or point[0][0] >= width - 1 or point[0][1] >= height - 1:
+                return True
+        return False
+
+    def is_middle(contour, width, height):
+        x, y, w, h = cv2.boundingRect(contour)
+        xmargin = width * 0.2
+        ymargin = height * 0.2
+        ra = Rectangle(x,y, x+w, y+h)
+        rb = Rectangle(xmargin,ymargin, width- xmargin, height - ymargin)
+        overlap_area = 0
+        def area (a,b):
+            dx = min(a.x2, b.x2) - max(a.x1, b.x1)
+            dy = min(a.y2, b.y2) - max(a.y1, b.y1)
+            if (dx>=0) and (dy>=0):
+                return dx * dy
+            return 0
+        # print(overlap_area, w*h*0.7)
+        overlap_area = area(ra, rb)
+        if overlap_area < w*h * 0.7:
+            return False
+        return True
+
+    bbs = []
+    for c in cnts:
+        if not is_contour_touching_edge(c, width, height) and  is_middle(c, width, height):
+            area = cv2.contourArea(c)
+            if area > 200:
+                x, y, w, h = cv2.boundingRect(c)
+                # expand bounding box by 10 percent
+                x = x - (w * 0.1)
+                y = y - (h * 0.1)
+                w = w + (w * 0.2)
+                h = h + (h * 0.2)
+                # make sure bounding box is within frame
+                x = max(int(x), 0)
+                y = max(int(y), 0)
+                w = min(int(w), width - x)
+                h = min(int(h), height - y)
+                bbs.append((x,y,w,h))
+    
+    bbs_sorted = sorted(bbs, key=lambda bb: bb[2]*bb[3],reverse=True)
+    final_bb = bbs_sorted[0]
+    x,y,w,h = final_bb
+    return x,y,w,h
+    

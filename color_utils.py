@@ -141,11 +141,11 @@ def extractColoredBoundingBox(im, color, yellowArea):
 
     threshold = 80
     _, binary = cv2.threshold(dog, threshold, 255, cv2.THRESH_BINARY)
-    # plt.figure()
-    # plt.imshow(blurred)
+    plt.figure()
+    # plt.imshow(binary)
     
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # cv2.drawContours(im, contours, -1, (0, 255, 0), 2)
+    cv2.drawContours(im, contours, -1, (0, 255, 0), 2)
     scaleFactor = 2
     threshold_area = 0
     round_objects = []

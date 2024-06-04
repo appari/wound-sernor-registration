@@ -13,23 +13,29 @@ import pandas as pd
 def extractRegions(imFilename):
     paddingFactor = 0.4
     im = cv2.imread(imFilename, cv2.IMREAD_COLOR)
-    ima, cropped_im,_,_, yellowArea,yellow_objs = extract_yellowcircles(im, paddingFactor)
-    blackbbIm, black_objs = extractColoredBoundingBox(cropped_im.copy(), 'black', yellowArea)
-    whitebbIm, white_objs = extractColoredBoundingBox(cropped_im.copy(), 'white', yellowArea)
 
+    ima, cropped_im,_,_, yellowArea,yellow_objs = extract_yellowcircles(im, paddingFactor, True)
+    if (len(yellow_objs) == 0):
+        print('1st phase of yellow objects scanning did not detect sensor')
+        return None, cropped_im
     # Display the annotated image
     # plt.figure(figsize=(10, 8))
-    # plt.imshow(changeFormat(blackbbIm))
-    # plt.title('Black')
+    # plt.imshow(cropped_im)
+    # plt.title('Cropped')
     # plt.show()
     # plt.figure(figsize=(10, 8))
     # plt.imshow(changeFormat(whitebbIm))
     # plt.title('white')
     # plt.show()
 
-    im = cv2.imread(imFilename, cv2.IMREAD_COLOR)
+    # im = cv2.imread(imFilename, cv2.IMREAD_COLOR)
+    # print(cropped_im)
 
-    ima, cropped_im,_,tmp_img, yellowArea,yellow_objs = extract_yellowcircles(cropped_im, paddingFactor)
+    ima, cropped_im ,_, tmp_img, yellowArea, yellow_objs = extract_yellowcircles(cropped_im, paddingFactor, False)
+
+    if (len(yellow_objs) == 0):
+        print('2nd phase of yellow objects scanning did not detect sensor')
+        return None, cropped_im
 
 
     for (x,y,bb) in yellow_objs:
@@ -83,7 +89,10 @@ def extractRegions(imFilename):
     # plt.title('Yellow')
     # plt.show()
     # try:
-    final_pts = getFinalPts(black_objs, white_objs, yellow_objs)
+    # print("White Objects: ", len(white_objs), 'Black Objects: ' , len(black_objs), 'Yellow Objects: ', len(yellow_objs))
+    # Removing this part because the order of the yellow regions is not needed.
+    # final_pts = getFinalPts(black_objs, white_objs, yellow_objs)
+    final_pts = yellow_objs
     return final_pts, cropped_im
 
 def compute_color_similarity(croppedBaseImage, contour1, croppedImage,contour2):
@@ -147,10 +156,18 @@ def calculateAngle(p1, p2, p3, p4):
 
 
 def calculateSimilarity(baseImage, image, intensityThresh = 0, pixelsChangedThresh = 30):
+    print('Working on baseImage..')
     baseImageRegions, croppedBaseImage = extractRegions(baseImage)
+    print('Working on image..')
     imageRegions, croppedImage = extractRegions(image)
-    if(imageRegions == None or baseImageRegions == None):
+    if(baseImageRegions is None):
+        print('All regions not detected in base image.')
         return None,None, None, None, None
+
+    if(imageRegions is None ):
+        print('All regions not detected in image.')
+        return None,None, None, None, None
+
     baseImageHeatMaps = []
     imageHeatMaps = []
     main_background = np.zeros_like(croppedBaseImage)
@@ -160,13 +177,21 @@ def calculateSimilarity(baseImage, image, intensityThresh = 0, pixelsChangedThre
     # to match the line formed by points ((imageRegions[2][0],imageRegions[2][1]) and (imageRegions[3][0], imageRegions[3][1])
     # plt.figure()
     # plt.imshow(imutils.rotate(croppedImage, -angle_degrees))
+    print(len(imageRegions), len(baseImageRegions))
+    if not ((len(baseImageRegions) == len(imageRegions)) and len(baseImageRegions) == 4):
+        print("Missing regions, Base Image Regions:", len(baseImageRegions), ' Image Regions: ', len(imageRegions))
+        return None, None, None, None, None
+
     for i in range(len(baseImageRegions)):
-        if len(baseImageRegions) != len(imageRegions) and len(baseImageRegions) != 4:
-            print("Missing regions", len(baseImageRegions))
+
+        if(imageRegions is None):
+            print("Missing image regions", i)
+            return None, None, None, None, None
+        
+        if(baseImageRegions is None):
+            print('Missing baseImage regions', i)
             return None,None, None, None, None
 
-        if(imageRegions[i] == None or baseImageRegions[i] == None):
-            return None,None, None, None, None
         angle_degrees = calculateAngle(imageRegions[0], imageRegions[1], baseImageRegions[0], baseImageRegions[1])
         baseContour = baseImageRegions[i][2][0]
         baseContour = shrinkBoundary(baseContour, 10)
@@ -175,7 +200,7 @@ def calculateSimilarity(baseImage, image, intensityThresh = 0, pixelsChangedThre
         x1, y1, w1, h1 = cv2.boundingRect(baseContour)
         border_percentage = -0.05
         border_width = int(border_percentage * w1)
-        border_height = int(border_percentage * h1)
+        border_height = int(border_percentage * h1) 
         x1 += border_width
         y1 += border_height
         w1 -= 2 * border_width
@@ -283,7 +308,7 @@ def generateResultsBulk(input_folder = "stand images", results_folder = "results
     entries = []
 
     # Specify the base folder and the results folder
-    input_folder = "stand images"
+    input_folder = "/Users/apparilalith/Desktop/asu/mayolab/woundsensor/input_images/iphone"
     results_folder = "results"
 
     success_cnt = 0
@@ -356,12 +381,14 @@ def generateResultsBulk(input_folder = "stand images", results_folder = "results
                 # Display and save the figures
                 plt.figure(figsize=(16, 10))
                 plt.subplot(1, 4, 1)
-                plt.imshow(cv2.cvtColor(croppedBaseImage, cv2.COLOR_BGR2RGB))
+                # plt.imshow(cv2.cvtColor(croppedBaseImage, cv2.COLOR_BGR2RGB))
+                plt.imshow(cv2.cvtColor(cv2.imread(base_image_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB))
                 plt.title("Base Image")
                 plt.axis("off")
 
                 plt.subplot(1, 4, 2)
-                plt.imshow(cv2.cvtColor(croppedImage, cv2.COLOR_BGR2RGB))
+                plt.imshow(cv2.cvtColor(cv2.imread(image_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB))
+                # plt.imshow(cv2.cvtColor(croppedImage, cv2.COLOR_BGR2RGB))
                 plt.title("Image")
                 plt.axis("off")
 
@@ -389,14 +416,17 @@ def generateResultsBulk(input_folder = "stand images", results_folder = "results
     return df
 
 def generateResultsSingleImage(base_image_path, image_path, result_filepath):
+    print(base_image_path, image_path)
     # Create the result folder path based on the image_path
     if image_path is None or base_image_path is None:
         print("No file found  ")
-        return
-    
+        return 
     # Calculate similarity and metrics
     croppedBaseImage, croppedImage, main_background, result, metrics = calculateSimilarity(base_image_path, image_path)
-    
+
+    if croppedBaseImage is None or croppedImage is None:
+        print('Error while processing the images')
+        return
     # Get the dimensions of the images
     base_image_height, base_image_width, _ = croppedBaseImage.shape
     image_height, image_width, _ = croppedImage.shape
@@ -410,31 +440,46 @@ def generateResultsSingleImage(base_image_path, image_path, result_filepath):
     # Subplot 1: Base Image
     plt.subplot(gs[0])
     plt.imshow(cv2.cvtColor(croppedBaseImage, cv2.COLOR_BGR2RGB))
+    # plt.imshow(cv2.cvtColor(cv2.imread(base_image_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB))
     plt.title("Base Image")
     plt.axis("off")
 
     # Subplot 2: Image
     plt.subplot(gs[1])
     plt.imshow(cv2.cvtColor(croppedImage, cv2.COLOR_BGR2RGB))
+    # plt.imshow(cv2.cvtColor(cv2.imread(image_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB))
     plt.title("Image")
     plt.axis("off")
 
     # Subplot 3: Metrics for Circles
-    plt.subplot(gs[2])
+    ax1 = plt.subplot(gs[2])
     # Extracting the circle numbers and corresponding values
     circle_numbers = list(range(1, 5))  # Assuming there are 4 circles (adjust accordingly)
     pixels_changed = [metrics[i][0] for i in range(4)]
     intensity_change = [metrics[i][1] for i in range(4)]
-    # Plotting the values
-    plt.plot(circle_numbers, pixels_changed, label='Pixels Changed', marker='o')
-    plt.plot(circle_numbers, intensity_change, label='Intensity Change', marker='o')
-    # Adding labels and title
-    plt.xlabel('Circle Number')
-    plt.ylabel('Values')
+
+    # Plotting pixels changed on the primary y-axis
+    ax1.plot(circle_numbers, pixels_changed, label='Pixels Changed', marker='o', color='tab:blue')
+    ax1.set_xlabel('Circle Number')
+    ax1.set_ylabel('Pixels Changed', color='tab:blue')
+
+    # Creating a secondary y-axis for intensity change
+    ax2 = ax1.twinx()
+    ax2.plot(circle_numbers, intensity_change, label='Intensity Change', marker='o', color='tab:red')
+    ax2.set_ylabel('Intensity Change', color='tab:red')
+
+    # Adding title
     plt.title('Metrics for Circles')
-    plt.legend()
+
     # Set x-axis tick positions and labels to display as "Circle 1", "Circle 2", etc.
-    plt.xticks(circle_numbers, [f'Circle {i}' for i in circle_numbers])
+    ax1.set_xticks(circle_numbers)
+    ax1.set_xticklabels([f'Circle {i}' for i in circle_numbers])
+
+    # Adding legend
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+
+    # plt.show()
 
     # Subplot 4: Overlay with Colorbar
     plt.subplot(gs[3])
@@ -445,12 +490,16 @@ def generateResultsSingleImage(base_image_path, image_path, result_filepath):
     cbar = plt.colorbar(aspect=40)  # Adjust the aspect ratio for the colorbar here
     cbar.ax.tick_params(labelsize=8)
 
+    print(os.path.basename(image_path).split('.')[0])
     # Adjust the layout and save the plot
     plt.tight_layout()
-    plt.savefig(os.path.join(result_filepath, 'results.png'))
+    result_file_path = os.path.join(result_filepath, 'results_' + str(os.path.basename(image_path).split('.')[0]) + '.png')
+    print(result_file_path)
+    plt.savefig(result_file_path)
     plt.close()
 
     # plt.close()
+    return result_file_path, metrics
 
 
 
