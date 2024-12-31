@@ -16,7 +16,6 @@ def main():
         generateResultsSingleImage(base_image_path, image_path, result_filepath)
     except Exception as e:
         print(e)
-    
 
 if __name__ == '__main__':
     main()

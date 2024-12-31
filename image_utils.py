@@ -174,10 +174,11 @@ def filter_contours_not_inside_sensor(contours, sensor_rect):
             
 
 def extract_yellowcircles(image, padding_ratio = 0.9, first_extract = False):
-    if (first_extract):
-        x,y,w,h = extracting_sensor_region(image)
-        image = image[y:y+h, x:x+w]
-        square_region = image
+    # if (first_extract):
+    #     x,y,w,h = extracting_sensor_region(image)
+    #     image = image[y:y+h, x:x+w]
+    #     square_region = image
+
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     lower_yellow = np.array([20, 150, 150])
@@ -206,10 +207,10 @@ def extract_yellowcircles(image, padding_ratio = 0.9, first_extract = False):
     # _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
 
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # cv2.drawContours(yellow_circles, contours, -1, 255, 10)
+    cv2.drawContours(yellow_circles, contours, -1, 255, 2)
     # print(len(contours))
     # plt.figure()
-    # plt.imshow(yellow_circles)
+    # plt.imshow(mask)
     # plt.title('Contours')
     # plt.show()
     if(len(contours)>4):
@@ -233,9 +234,10 @@ def extract_yellowcircles(image, padding_ratio = 0.9, first_extract = False):
         
         # if(len(contours)!=4):
         #     contours = find_rectangle_contours(contours)
-    if(len(contours)<4):
-        print('Not enought contours detected:', len(contours))
-        return yellow_circles, image, 0, image, 0, []
+    print(len(contours))
+    # if(len(contours)<4):
+    #     print('Not enought contours detected:', len(contours))
+    #     return yellow_circles, image, 0, image, 0, []
 
     # filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 100]
 
@@ -249,7 +251,7 @@ def extract_yellowcircles(image, padding_ratio = 0.9, first_extract = False):
     areas = []
     # plt.figure(figsize=(10, 8))
     # plt.imshow(changeFormat(yellow_circles))
-    # plt.title('Black')
+    # plt.title('Assays')
     # plt.show()
 
     # TODO: Add validation check to eliminate noisy contours using geometry of the sensor

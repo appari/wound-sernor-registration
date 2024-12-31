@@ -39,7 +39,7 @@ def main():
         if st.button('Process Images'):
             image_paths = save_uploaded_files_to_temp([uploaded_image1, uploaded_image2])
             # print(image_paths[0])
-            result_image_path = generateResultsSingleImage(image_paths[0], image_paths[1], '.')
+            result_image_path,_ = generateResultsSingleImage(image_paths[0], image_paths[1], '.')
             # print("result,image", result_image_path)
             if result_image_path:   
                 result_image_pil = Image.open(result_image_path)
